@@ -46,7 +46,7 @@ struct proc {
   enum procstate state;        // Process state
   int pid;                     // Process ID
   int tid;                     // Thread Id
-  int thread_index;
+  int thread_index;            //changed
   char* tstack;                // Thread stack
   int Is_Thread;               // if 0 --->Parent o.w child
   int Thread_Num;              // Keeping track of the number of threads of a process
@@ -66,6 +66,7 @@ typedef struct resource
   char name[4];
   int acquired;
   void* startaddr;
+  struct spinlock lock;//changed
 }Resource;
 // ##################################################################
 

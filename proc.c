@@ -17,17 +17,25 @@ typedef struct Node {
     enum nodetype type;
     struct Node* next;
 } Node;
-struct {
+typedef struct Graph{
   struct spinlock lock;
   Node* adjList[MAXTHREAD+NRESOURCE];
   int visited[MAXTHREAD+NRESOURCE];
   int recStack[MAXTHREAD+NRESOURCE];
 } Graph;
 //################ADD Your Implementation Here######################
-
-
-
-      //Graph creation and functions
+    //Graph creation and functions
+Graph* initGraph()
+{
+  struct Graph *graph = (struct Graph*)kalloc();
+  initlock(&graph->lock, "dlgraph");
+  for(int i=0;i<MAXTHREAD+NRESOURCE;i++){
+      graph->adjList[i]=0;
+      graph->visited[i]=0;
+      graph->recStack[i]=0;
+  }
+  return graph;
+}
 
 
 
@@ -36,6 +44,9 @@ struct {
 static struct proc *initproc;
 
 int nextpid = 1;
+int nextnid= NRESOURCE+1;//changed
+struct spinlock nextnid_lock;//changed
+struct resource* resources[NRESOURCE];//changed
 extern void forkret(void);
 extern void trapret(void);
 
@@ -136,6 +147,7 @@ found:
   p->Thread_Num=0;
   p->tstack=0;
   p->tid=0;
+  p->thread_index=0;//changed
   return p;
 }
 
@@ -171,13 +183,22 @@ userinit(void)
   // writes to be visible, and the lock is also needed
   // because the assignment might not be atomic.
 //################ADD Your Implementation Here######################
-
-
-
-      //Resource page handling and creation
-
-
-
+  //Resource page handling and creation
+  char* first_half=kalloc();
+  int limit=PGSIZE/2/NRESOURCE;
+  char* second_half=first_half+2048;
+  for(int i=0;i<NRESOURCE;i++)
+  {
+    struct resource* rsrs=(struct resource*)first_half;
+    rsrs->resourceid=i;
+    initlock(&rsrs->lock, "resourcelock");
+    sprintf(rsrs->name,"r%d",rsrs->resourceid);
+    rsrs->acquired=0;
+    rsrs->startaddr=first_half+sizeof(rsrs->resourceid);
+    resources[i]=rsrs;
+    first_half+=limit;
+  }
+  Graph* g=initGraph();
 //##################################################################
   acquire(&ptable.lock);
 
@@ -555,6 +576,10 @@ int clone(void (*worker)(void*,void*),void* arg1,void* arg2,void* stack)
   //of a process
   curproc->Thread_Num++;
   New_Thread->tid=curproc->Thread_Num;
+  acquire(&nextnid_lock);//changed
+  New_Thread->thread_index=nextnid;//changed
+  nextnid++;//changed
+  release(&nextnid_lock);//changed
   New_Thread->Is_Thread=1;
   //The parent of thread will be the process calling clone
   New_Thread->parent=curproc;
