@@ -24,19 +24,133 @@ typedef struct Graph{
   int recStack[MAXTHREAD+NRESOURCE];
 } Graph;
 //################ADD Your Implementation Here######################
-    //Graph creation and functions
-Graph* initGraph()
-{
-  struct Graph *graph = (struct Graph*)kalloc();
-  initlock(&graph->lock, "dlgraph");
-  for(int i=0;i<MAXTHREAD+NRESOURCE;i++){
-      graph->adjList[i]=0;
-      graph->visited[i]=0;
-      graph->recStack[i]=0;
-  }
-  return graph;
+int isCyclic(Graph* graph, int v) {
+    graph->visited[v] = 1;
+    graph->recStack[v] = 1;
+
+    for (Node* neighbor = graph->adjList[v]; neighbor != 0; neighbor = neighbor->next) {
+        int adjVertex = neighbor->vertex;
+        if (!graph->visited[adjVertex] && isCyclic(graph, adjVertex))
+            return 1; 
+        else if (graph->recStack[adjVertex])
+            return 1; 
+    }
+
+    graph->recStack[v] = 0;
+    return 0;
 }
 Graph *g;
+
+Graph* initGraph(){
+    Graph *graph = (Graph*)malloc(sizeof(Graph));
+    initlock(&graph->lock, "dlgraph");
+    for(int i=0;i<MAXTHREAD+NRESOURCE;i++){
+        graph->adjList[i]=0;
+        graph->visited[i]=0;
+        graph->recStack[i]=0;
+    }
+    return graph;
+}
+
+int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
+    Node* newNode = (Node*)malloc(sizeof(Node));
+    newNode->vertex = dest;
+    newNode->next = 0;
+    if(type == REQUEST)
+        newNode->type = RESOURCE;
+    else
+        newNode->type = PROCESS;
+    if(graph->adjList[src] == 0){
+        graph->adjList[src] = newNode;
+        return 1;
+    }
+    Node* front_node = graph->adjList[src];
+    while(front_node->next != 0){
+      front_node = front_node->next;
+    }
+    front_node->next = newNode;
+    return 1;
+}
+
+int removeEdge(Graph* graph, int src, int dest){
+    Node* front_node = graph->adjList[src];
+    Node* prev_node = 0;
+    while(front_node != 0){
+      if(front_node== dest){
+        if(prev_node == 0){
+          graph->adjList[src] = front_node->next;
+        }else{
+          prev_node->next = front_node->next;
+        }
+        free(front_node);
+        return 1;
+      } 
+      prev_node = front_node;
+      front_node = front_node->next;
+    }
+    return 0;
+}
+
+int add_request_edge(Graph* graph, int src, int dest){
+    acquire(&graph->lock);
+    addEdge(graph, src, dest, REQUEST);
+    if(isCyclic(graph, src)){
+        cprintf("Deadlock detected.\n");
+        release(&graph->lock);
+        return 0;
+    }
+    release(&graph->lock);
+    return 0;
+}
+
+Resource* get_resource_by_id(int id){
+  Resource* resource = 0;
+  for(int i = 0; i < NRESOURCE; i++){
+      if(resources[i]->resourceid == id){
+        resource = resources[i];
+        break;
+      }
+  }
+  if(resource == 0)
+    return -1;
+}
+
+int add_assign_edge(Graph* graph, int src, int dest){
+    Resource* resource = 0;
+    if(dest >= NRESOURCE){
+        return -1;
+    }
+    resource = resources[dest];
+    acquire(&resource->lock);
+    resource->acquired = 1;
+    acquire(&graph->lock);
+    removeEdge(graph, src, dest);
+    addEdge(graph, dest, src, ASSIGN);
+    if(isCyclic(graph, src)){
+        cprintf("Deadlock detected.\n");
+    }
+    release(&graph->lock);
+    return 0;
+}
+      
+void acquireResource(Graph* graph, int src, int dest){
+    add_request_edge(graph, src, dest);
+    add_assign_edge(graph, src, dest);
+}
+
+void releaseResource(Graph* graph, int src, int dest){
+    Resource* resource = 0;
+    if(dest >= NRESOURCE){
+        return -1;
+    }
+    resource = resources[dest];
+    acquire(&graph->lock);
+    removeEdge(graph, src, dest);
+    release(&graph->lock);
+    resource->acquired = 0;
+    release(&resource->lock);
+}
+
 //##################################################################
 
 static struct proc *initproc;
@@ -716,17 +830,15 @@ procdump(void)
 
 int requestresource(int Resource_ID)
 {
-//################ADD Your Implementation Here######################
-
-//##################################################################
-return -1;
+    struct proc *curproc = myproc();
+    acquireResource(g, curproc->thread_index, Resource_ID);
+    return -1;
 }
 int releaseresource(int Resource_ID)
 {
-  //################ADD Your Implementation Here######################
-
-//##################################################################
-  return -1;
+    struct proc *curproc = myproc();
+    releaseResource(g, curproc->thread_index, Resource_ID);
+    return -1;
 }
 int writeresource(int Resource_ID,void* buffer,int offset, int size)
 {

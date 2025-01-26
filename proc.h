@@ -36,6 +36,7 @@ enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // ##################################################################
 enum nodetype {RESOURCE, PROCESS};
+enum edgetype {REQUEST, ASSIGN};
 // ##################################################################
 
 // Per-process state
@@ -62,6 +63,7 @@ struct proc {
 // ##################################################################
 typedef struct resource
 {
+  struct spinlock lock;
   int resourceid;
   char name[4];
   int acquired;
