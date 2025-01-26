@@ -36,9 +36,7 @@ Graph* initGraph()
   }
   return graph;
 }
-
-
-
+Graph *g;
 //##################################################################
 
 static struct proc *initproc;
@@ -198,7 +196,7 @@ userinit(void)
     resources[i]=rsrs;
     first_half+=limit;
   }
-  Graph* g=initGraph();
+  g=initGraph();
 //##################################################################
   acquire(&ptable.lock);
 
