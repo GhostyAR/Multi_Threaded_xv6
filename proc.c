@@ -23,6 +23,20 @@ typedef struct Graph{
   int visited[MAXTHREAD+NRESOURCE];
   int recStack[MAXTHREAD+NRESOURCE];
 } Graph;
+// ##################################################################
+typedef struct resource
+{
+  int resourceid;
+  char name[4];
+  int acquired;
+  void* startaddr;
+  struct spinlock lock;//changed
+}Resource;
+// ##################################################################
+struct resource* resources[NRESOURCE];//changed
+int nextnid= NRESOURCE+1;//changed
+struct spinlock nextnid_lock;//changed
+char *next_addr;//changed
 //################ADD Your Implementation Here######################
 int isCyclic(Graph* graph, int v) {
     graph->visited[v] = 1;
@@ -41,8 +55,8 @@ int isCyclic(Graph* graph, int v) {
 }
 Graph *g;
 
-Graph* initGraph(){
-    Graph *graph = (Graph*)malloc(sizeof(Graph));
+Graph* initGraph(char * address){
+    Graph *graph = (Graph*)address;
     initlock(&graph->lock, "dlgraph");
     for(int i=0;i<MAXTHREAD+NRESOURCE;i++){
         graph->adjList[i]=0;
@@ -53,7 +67,8 @@ Graph* initGraph(){
 }
 
 int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
-    Node* newNode = (Node*)malloc(sizeof(Node));
+    Node* newNode = (Node*)next_addr;
+    next_addr+=sizeof(Node*);
     newNode->vertex = dest;
     newNode->next = 0;
     if(type == REQUEST)
@@ -82,7 +97,6 @@ int removeEdge(Graph* graph, int src, int dest){
         }else{
           prev_node->next = front_node->next;
         }
-        free(front_node);
         return 1;
       } 
       prev_node = front_node;
@@ -156,9 +170,6 @@ void releaseResource(Graph* graph, int src, int dest){
 static struct proc *initproc;
 
 int nextpid = 1;
-int nextnid= NRESOURCE+1;//changed
-struct spinlock nextnid_lock;//changed
-struct resource* resources[NRESOURCE];//changed
 extern void forkret(void);
 extern void trapret(void);
 
@@ -304,13 +315,17 @@ userinit(void)
     struct resource* rsrs=(struct resource*)first_half;
     rsrs->resourceid=i;
     initlock(&rsrs->lock, "resourcelock");
-    sprintf(rsrs->name,"r%d",rsrs->resourceid);
+    //sprintf(rsrs->name,"r%d",rsrs->resourceid);
+    rsrs->name[0]='R';
+    rsrs->name[1]='0'+i;
+    rsrs->name[2]='\0';
     rsrs->acquired=0;
     rsrs->startaddr=first_half+sizeof(rsrs->resourceid);
     resources[i]=rsrs;
     first_half+=limit;
   }
-  g=initGraph();
+  g=initGraph(second_half);
+  next_addr=kalloc();
 //##################################################################
   acquire(&ptable.lock);
 
