@@ -72,6 +72,7 @@ int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
     cprintf("addEdge: thread %d and resource %d\n", src, dest);
     acquire(&next_addr_lock);
     Node* newNode = (Node*)next_addr;
+    cprintf("new node allocated to addr %p with id %d and dest %d and type %d\n",next_addr,src,dest,type);
     next_addr+=sizeof(Node*);
     release(&next_addr_lock);
     Node* front_node = 0;
@@ -157,7 +158,7 @@ int add_assign_edge(Graph* graph, int src, int dest) {
 
     acquire(&resource->lock);
     if (resource->acquired) {
-        cprintf("Resource already acquired!\n");
+        cprintf("Resource already acquired! thread: %d\n",src);
         release(&resource->lock);
         return -1;  // Avoid deadlock by exiting early
     }
@@ -172,12 +173,10 @@ int add_assign_edge(Graph* graph, int src, int dest) {
     if (isCyclic(graph, src)) {
         cprintf("Deadlock detected.\n");
         release(&graph->lock);
-        release(&resource->lock);
         return -1;  // Avoid inconsistent state
     }
 
     release(&graph->lock);
-    release(&resource->lock);
     return 0;
 }
 
@@ -199,7 +198,6 @@ int releaseResource(Graph* graph, int src, int dest) {
     removeEdge(graph, src, dest);
     release(&graph->lock);
 
-    acquire(&resource->lock);
     resource->acquired = 0;
     release(&resource->lock);
 
@@ -350,10 +348,9 @@ userinit(void)
 //################ADD Your Implementation Here######################
   //Resource page handling and creation
   char* first_half=kalloc();
-  cprintf("first_half: %p\n", first_half);
   int limit=PGSIZE/2/NRESOURCE;
-  char* second_half=first_half+2048;
-  cprintf("second_half: %p\n", second_half);
+  char* second_half=first_half+PGSIZE/2;
+  cprintf("first_half %p   second_half%p\n",first_half,second_half);
   for(int i=0;i<NRESOURCE;i++)
   {
     struct resource* rsrs=(struct resource*)first_half;
@@ -364,13 +361,16 @@ userinit(void)
     rsrs->name[1]='0'+i;
     rsrs->name[2]='\0';
     rsrs->acquired=0;
-    rsrs->startaddr=first_half+sizeof(rsrs->resourceid);
+    rsrs->startaddr=first_half;
     resources[i]=rsrs;
+    cprintf("resource %d allocated at addr %p with name %s\n",rsrs->resourceid,first_half,rsrs->name);
     first_half+=limit;
   }
   g=initGraph(second_half);
+  cprintf("graph starting addr %p\n",g);
   next_addr=kalloc();
-//##################################################################
+  cprintf("new page for nodes:%p\n",next_addr);
+  //##################################################################
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
