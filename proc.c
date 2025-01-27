@@ -74,6 +74,15 @@ int isCyclic(Graph* graph, int v) {
     return 0;
 }
 
+int hasCycle(Graph *graph, int v){
+    int ans = isCyclic(graph, v);
+    for(int i = 0; i < MAXTHREAD+NRESOURCE; i++){
+        graph->visited[i] = 0;
+        graph->recStack[i] = 0;
+    }
+    return ans;
+}
+
 Graph* initGraph(char * address){
     cprintf("initGraph: graph initialized in address %p\n", address);
     Graph *graph = (Graph*)address;
@@ -152,7 +161,7 @@ int add_request_edge(Graph* graph, int src, int dest){
     addEdge(graph, src, dest, REQUEST);
     display_graph(graph);
     cprintf("before iscyclic in add_req\n");
-    if(isCyclic(graph, src)){
+    if(hasCycle(graph, src)){
         cprintf("Deadlock detected.\n");
         release(&graph->lock);
         return 0;
@@ -185,7 +194,7 @@ int add_assign_edge(Graph* graph, int src, int dest) {
     addEdge(graph, src, dest, ASSIGN);
     display_graph(graph);
     cprintf("before iscyclic in add_assign\n");
-    if (isCyclic(graph, dest)) {
+    if (hasCycle(graph, dest)) {
         cprintf("Deadlock detected.\n");
         release(&graph->lock);
         return -1;  // Avoid inconsistent state
