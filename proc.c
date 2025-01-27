@@ -7,6 +7,15 @@
 #include "proc.h"
 #include "spinlock.h"
 
+typedef struct resource
+{
+  int resourceid;
+  char name[4];
+  int acquired;
+  void* startaddr;
+  struct spinlock lock;//changed
+}Resource;
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -23,16 +32,7 @@ typedef struct Graph{
   int visited[MAXTHREAD+NRESOURCE];
   int recStack[MAXTHREAD+NRESOURCE];
 } Graph;
-// ##################################################################
-typedef struct resource
-{
-  int resourceid;
-  char name[4];
-  int acquired;
-  void* startaddr;
-  struct spinlock lock;//changed
-}Resource;
-// ##################################################################
+
 struct resource* resources[NRESOURCE];//changed
 int nextnid= NRESOURCE+1;//changed
 struct spinlock nextnid_lock;//changed
@@ -91,7 +91,7 @@ int removeEdge(Graph* graph, int src, int dest){
     Node* front_node = graph->adjList[src];
     Node* prev_node = 0;
     while(front_node != 0){
-      if(front_node== dest){
+      if(front_node->vertex == dest){
         if(prev_node == 0){
           graph->adjList[src] = front_node->next;
         }else{
@@ -126,7 +126,8 @@ Resource* get_resource_by_id(int id){
       }
   }
   if(resource == 0)
-    return -1;
+    return 0;
+  return resource;
 }
 
 int add_assign_edge(Graph* graph, int src, int dest){
@@ -152,7 +153,7 @@ void acquireResource(Graph* graph, int src, int dest){
     add_assign_edge(graph, src, dest);
 }
 
-void releaseResource(Graph* graph, int src, int dest){
+int releaseResource(Graph* graph, int src, int dest){
     Resource* resource = 0;
     if(dest >= NRESOURCE){
         return -1;
@@ -163,6 +164,7 @@ void releaseResource(Graph* graph, int src, int dest){
     release(&graph->lock);
     resource->acquired = 0;
     release(&resource->lock);
+    return 0;
 }
 
 //##################################################################
@@ -846,12 +848,14 @@ procdump(void)
 int requestresource(int Resource_ID)
 {
     struct proc *curproc = myproc();
+    cprintf("thread %d is requeseting %d\n", curproc->thread_index, Resource_ID);
     acquireResource(g, curproc->thread_index, Resource_ID);
     return -1;
 }
 int releaseresource(int Resource_ID)
 {
     struct proc *curproc = myproc();
+    cprintf("thread %d is releasing %d\n", curproc->thread_index, Resource_ID);
     releaseResource(g, curproc->thread_index, Resource_ID);
     return -1;
 }
