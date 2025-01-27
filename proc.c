@@ -57,6 +57,7 @@ int isCyclic(Graph* graph, int v) {
 Graph *g;
 
 Graph* initGraph(char * address){
+    cprintf("initGraph: graph initialized in address %p\n", address);
     Graph *graph = (Graph*)address;
     initlock(&graph->lock, "dlgraph");
     for(int i=0;i<MAXTHREAD+NRESOURCE;i++){
@@ -68,21 +69,32 @@ Graph* initGraph(char * address){
 }
 
 int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
+    cprintf("addEdge: thread %d and resource %d\n", src, dest);
     acquire(&next_addr_lock);
     Node* newNode = (Node*)next_addr;
     next_addr+=sizeof(Node*);
     release(&next_addr_lock);
-    newNode->vertex = dest;
-    newNode->next = 0;
-    if(type == REQUEST)
+    Node* front_node = 0;
+    if(type == REQUEST){
+        newNode->vertex = dest;
+        newNode->next = 0;
         newNode->type = RESOURCE;
-    else
-        newNode->type = PROCESS;
-    if(graph->adjList[src] == 0){
-        graph->adjList[src] = newNode;
-        return 1;
+        if(graph->adjList[src] == 0){
+          graph->adjList[src] = newNode;
+          return 1;
+        }
+        front_node = graph->adjList[src];
     }
-    Node* front_node = graph->adjList[src];
+    else{
+        newNode->vertex = src;
+        newNode->next = 0;
+        newNode->type = PROCESS;
+        if(graph->adjList[dest] == 0){
+          graph->adjList[dest] = newNode;
+          return 1;
+        }
+        front_node = graph->adjList[dest];
+    }
     while(front_node->next != 0){
       front_node = front_node->next;
     }
@@ -91,6 +103,7 @@ int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
 }
 
 int removeEdge(Graph* graph, int src, int dest){
+    cprintf("removeEdge: thread %d and resource %d\n", src, dest);
     Node* front_node = graph->adjList[src];
     Node* prev_node = 0;
     while(front_node != 0){
@@ -109,6 +122,7 @@ int removeEdge(Graph* graph, int src, int dest){
 }
 
 int add_request_edge(Graph* graph, int src, int dest){
+    cprintf("add_request_edge: thread %d and resource %d\n", src, dest);
     acquire(&graph->lock);
     addEdge(graph, src, dest, REQUEST);
     if(isCyclic(graph, src)){
@@ -133,42 +147,65 @@ Resource* get_resource_by_id(int id){
   return resource;
 }
 
-int add_assign_edge(Graph* graph, int src, int dest){
+int add_assign_edge(Graph* graph, int src, int dest) {
     Resource* resource = 0;
-    if(dest >= NRESOURCE){
+    if (dest >= NRESOURCE) {
         return -1;
     }
     resource = resources[dest];
+    cprintf("thread %d is trying to assign resource %d named %s\n", src, resource->resourceid, resource->name);
+
     acquire(&resource->lock);
+    if (resource->acquired) {
+        cprintf("Resource already acquired!\n");
+        release(&resource->lock);
+        return -1;  // Avoid deadlock by exiting early
+    }
+
+    cprintf("thread %d acquired resource %d\n", src, resource->resourceid);
     resource->acquired = 1;
+
     acquire(&graph->lock);
     removeEdge(graph, src, dest);
     addEdge(graph, dest, src, ASSIGN);
-    if(isCyclic(graph, src)){
+
+    if (isCyclic(graph, src)) {
         cprintf("Deadlock detected.\n");
+        release(&graph->lock);
+        release(&resource->lock);
+        return -1;  // Avoid inconsistent state
     }
+
     release(&graph->lock);
+    release(&resource->lock);
     return 0;
 }
+
       
 void acquireResource(Graph* graph, int src, int dest){
     add_request_edge(graph, src, dest);
     add_assign_edge(graph, src, dest);
 }
 
-int releaseResource(Graph* graph, int src, int dest){
+int releaseResource(Graph* graph, int src, int dest) {
+    cprintf("releaseResource: thread %d is releasing %d\n", src, dest);
     Resource* resource = 0;
-    if(dest >= NRESOURCE){
+    if (dest >= NRESOURCE) {
         return -1;
     }
     resource = resources[dest];
+
     acquire(&graph->lock);
     removeEdge(graph, src, dest);
     release(&graph->lock);
+
+    acquire(&resource->lock);
     resource->acquired = 0;
     release(&resource->lock);
+
     return 0;
 }
+
 
 //##################################################################
 
@@ -313,8 +350,10 @@ userinit(void)
 //################ADD Your Implementation Here######################
   //Resource page handling and creation
   char* first_half=kalloc();
+  cprintf("first_half: %p\n", first_half);
   int limit=PGSIZE/2/NRESOURCE;
   char* second_half=first_half+2048;
+  cprintf("second_half: %p\n", second_half);
   for(int i=0;i<NRESOURCE;i++)
   {
     struct resource* rsrs=(struct resource*)first_half;
