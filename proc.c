@@ -40,7 +40,7 @@ char *next_addr;//changed
 struct spinlock next_addr_lock;
 Graph *g;
 //################ADD Your Implementation Here######################
-void diplay_graph(Graph* graph){
+void display_graph(Graph* graph){
   for(int i = 0; i < MAXTHREAD+NRESOURCE; i++){
       if(graph->adjList[i] == 0){
         continue;
@@ -57,11 +57,13 @@ void diplay_graph(Graph* graph){
 }
 
 int isCyclic(Graph* graph, int v) {
+    cprintf("iscyclic-%d\n",v);
     graph->visited[v] = 1;
     graph->recStack[v] = 1;
-
+  
     for (Node* neighbor = graph->adjList[v]; neighbor != 0; neighbor = neighbor->next) {
         int adjVertex = neighbor->vertex;
+        cprintf("adjvertex %d\n",adjVertex);
         if (!graph->visited[adjVertex] && isCyclic(graph, adjVertex))
             return 1; 
         else if (graph->recStack[adjVertex])
@@ -111,7 +113,7 @@ int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
         if(graph->adjList[dest] == 0){
           cprintf("we have been here2\n");
           graph->adjList[dest] = newNode;
-          diplay_graph(graph);
+          //display_graph(graph);
           return 1;
         }
         front_node = graph->adjList[dest];
@@ -148,6 +150,8 @@ int add_request_edge(Graph* graph, int src, int dest){
     cprintf("add_request_edge: thread %d and resource %d\n", src, dest);
     acquire(&graph->lock);
     addEdge(graph, src, dest, REQUEST);
+    display_graph(graph);
+    cprintf("before iscyclic in add_req\n");
     if(isCyclic(graph, src)){
         cprintf("Deadlock detected.\n");
         release(&graph->lock);
@@ -179,8 +183,9 @@ int add_assign_edge(Graph* graph, int src, int dest) {
     acquire(&graph->lock);
     removeEdge(graph, src, dest);
     addEdge(graph, src, dest, ASSIGN);
-    cprintf("hosein goft\n");
-    if (isCyclic(graph, src)) {
+    display_graph(graph);
+    cprintf("before iscyclic in add_assign\n");
+    if (isCyclic(graph, dest)) {
         cprintf("Deadlock detected.\n");
         release(&graph->lock);
         return -1;  // Avoid inconsistent state
