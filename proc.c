@@ -37,6 +37,7 @@ struct resource* resources[NRESOURCE];//changed
 int nextnid= NRESOURCE+1;//changed
 struct spinlock nextnid_lock;//changed
 char *next_addr;//changed
+struct spinlock next_addr_lock;
 //################ADD Your Implementation Here######################
 int isCyclic(Graph* graph, int v) {
     graph->visited[v] = 1;
@@ -67,8 +68,10 @@ Graph* initGraph(char * address){
 }
 
 int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
+    acquire(&next_addr_lock);
     Node* newNode = (Node*)next_addr;
     next_addr+=sizeof(Node*);
+    release(&next_addr_lock);
     newNode->vertex = dest;
     newNode->next = 0;
     if(type == REQUEST)
