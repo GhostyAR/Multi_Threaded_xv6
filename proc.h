@@ -63,7 +63,6 @@ struct proc {
 // ##################################################################
 typedef struct resource
 {
-  struct spinlock lock;
   int resourceid;
   char name[4];
   int acquired;
