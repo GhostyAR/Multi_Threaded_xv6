@@ -60,8 +60,11 @@ int isCyclic(Graph* graph, int v) {
     cprintf("iscyclic-%d\n",v);
     graph->visited[v] = 1;
     graph->recStack[v] = 1;
-  
-    for (Node* neighbor = graph->adjList[v]; neighbor != 0; neighbor = neighbor->next) {
+    if(graph->adjList[v]==0)
+    {
+      return 0;
+    }
+    for (Node* neighbor = graph->adjList[v]; neighbor->next != 0; neighbor = neighbor->next) {
         int adjVertex = neighbor->vertex;
         cprintf("adjvertex %d\n",adjVertex);
         if (!graph->visited[adjVertex] && isCyclic(graph, adjVertex))
@@ -136,30 +139,56 @@ int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
     return 1;
 }
 
-int removeEdge(Graph* graph, int src, int dest){
-    cprintf("removeEdge: thread %d and resource %d\n", src, dest);
+/*int removeEdge(Graph* graph, int src, int dest){
+   cprintf("removeEdge: thread %d and resource %d\n", src, dest);
     Node* front_node = graph->adjList[src];
     Node* prev_node = 0;
     while(front_node != 0){
       if(front_node->vertex == dest){
         if(prev_node == 0){
+          cprintf("the next: %d\n",front_node->next);
           graph->adjList[src] = front_node->next;
         }else{
           prev_node->next = front_node->next;
         }
+        display_graph(graph);
         return 1;
       } 
       prev_node = front_node;
       front_node = front_node->next;
     }
     return 0;
+}*/
+
+int removeEdge(Graph* graph, int src, int dest) {
+    cprintf("removeEdge: thread %d and resource %d\n", src, dest);
+
+    Node* front_node = graph->adjList[src];
+    Node* prev_node = 0;
+
+    while (front_node != 0) {
+        if (front_node->vertex == dest) {
+            // Remove the node
+            if (prev_node == 0) {
+                graph->adjList[src] = front_node->next;
+            } else {
+                prev_node->next = front_node->next;
+            }
+            display_graph(graph);
+            return 1;
+        }
+        prev_node = front_node;
+        front_node = front_node->next;
+    }
+
+    return 0; // Edge not found
 }
 
 int add_request_edge(Graph* graph, int src, int dest){
     cprintf("add_request_edge: thread %d and resource %d\n", src, dest);
     acquire(&graph->lock);
     addEdge(graph, src, dest, REQUEST);
-    display_graph(graph);
+   // display_graph(graph);
     cprintf("before iscyclic in add_req\n");
     if(hasCycle(graph, src)){
         cprintf("Deadlock detected.\n");
@@ -180,19 +209,22 @@ int add_assign_edge(Graph* graph, int src, int dest) {
     cprintf("thread %d is trying to assign resource %d named %s\n", src, resource->resourceid, resource->name);
 
     acquire(&resource->lock);
-    if (resource->acquired) {
-        cprintf("Resource already acquired! thread: %d\n",src);
+    while (resource->acquired!=0) {
+        //cprintf("Resource already acquired! thread: %d\n",src);
         release(&resource->lock);
-        return -1;  // Avoid deadlock by exiting early
+        acquire(&resource->lock);
     }
 
     cprintf("thread %d acquired resource %d\n", src, resource->resourceid);
     resource->acquired = src;
 
     acquire(&graph->lock);
-    removeEdge(graph, src, dest);
+    if(removeEdge(graph, src, dest)==0)
+    {
+      cprintf("invalid remove in add_assign_edge\n");
+    }
     addEdge(graph, src, dest, ASSIGN);
-    display_graph(graph);
+    //display_graph(graph);
     cprintf("before iscyclic in add_assign\n");
     if (hasCycle(graph, dest)) {
         cprintf("Deadlock detected.\n");
@@ -226,7 +258,10 @@ int releaseResource(Graph* graph, int src, int dest) {
     }
 
     acquire(&graph->lock);
-    removeEdge(graph, dest, src);
+    if(removeEdge(graph, dest, src)==0)
+    {
+      cprintf("invalid remove in add_assign_edge\n");
+    }
     resource->acquired = 0;
     release(&graph->lock);
 
