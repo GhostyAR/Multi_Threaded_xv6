@@ -40,7 +40,7 @@ char *next_addr;//changed
 struct spinlock next_addr_lock;
 Graph *g;
 //################ADD Your Implementation Here######################
-void diplay_graph(Graph* graph){
+void display_graph(Graph* graph){
   for(int i = 0; i < MAXTHREAD+NRESOURCE; i++){
       if(graph->adjList[i] == 0){
         continue;
@@ -56,7 +56,7 @@ void diplay_graph(Graph* graph){
   }
 }
 
-int isCyclic(Graph* graph, int v) {
+/*int isCyclic(Graph* graph, int v) {
     graph->visited[v] = 1;
     graph->recStack[v] = 1;
 
@@ -70,6 +70,32 @@ int isCyclic(Graph* graph, int v) {
 
     graph->recStack[v] = 0;
     return 0;
+}*/
+
+int isCyclic(Graph* graph, int v) {
+    cprintf("iscyclic-%d\n",v);
+    graph->visited[v] = 1;
+    graph->recStack[v] = 1;
+    for (Node* neighbor = graph->adjList[v]; neighbor != 0; neighbor = neighbor->next) {
+        int adjVertex = neighbor->vertex;
+        cprintf("adjvertex %d\n",adjVertex);
+        if (!graph->visited[adjVertex] && isCyclic(graph, adjVertex))
+            return 1; 
+        else if (graph->recStack[adjVertex])
+            return 1; 
+    }
+
+    graph->recStack[v] = 0;
+    return 0;
+}
+
+int hasCycle(Graph *graph, int v){
+    int ans = isCyclic(graph, v);
+    for(int i = 0; i < MAXTHREAD+NRESOURCE; i++){
+        graph->visited[i] = 0;
+        graph->recStack[i] = 0;
+    }
+    return ans;
 }
 
 Graph* initGraph(char * address){
@@ -83,11 +109,46 @@ Graph* initGraph(char * address){
     }
     return graph;
 }
-
 int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
+    cprintf("addEdge: src=%d, dest=%d\n", src, dest);
+
+    // Allocate memory for the new node
+    acquire(&next_addr_lock);
+    Node* newNode = (Node*)next_addr;
+    memset(newNode, 0, sizeof(Node)); // Ensure all fields are initialized to zero
+    next_addr += sizeof(Node);        // Advance pointer by the size of Node
+    release(&next_addr_lock);
+
+    // Set the new node's properties
+    newNode->vertex = (type == REQUEST) ? dest : src;
+    newNode->type = (type == REQUEST) ? RESOURCE : PROCESS;
+
+    // Add to the appropriate adjacency list
+    Node** list_head = (type == REQUEST) ? &graph->adjList[src] : &graph->adjList[dest];
+    if (*list_head == 0) {
+        // First node in the list
+
+        *list_head = newNode;
+        
+    } else {
+        // Traverse to the end of the list and append the new node
+        Node* front_node = *list_head;
+        while (front_node->next != 0) {
+            front_node = front_node->next;
+        }
+        front_node->next = newNode;
+    }
+
+    cprintf("Node added: %p, vertex=%d, next=%p\n", newNode, newNode->vertex, newNode->next);
+    display_graph(graph);
+    return 1;
+}
+
+/*int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
     cprintf("addEdge: thread %d and resource %d\n", src, dest);
     acquire(&next_addr_lock);
     Node* newNode = (Node*)next_addr;
+    memset(newNode, 0, sizeof(Node));
     cprintf("new node allocated to addr %p with id %d and dest %d and type %d\n",next_addr,src,dest,type);
     next_addr+=sizeof(Node*);
     release(&next_addr_lock);
@@ -104,14 +165,14 @@ int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
         front_node = graph->adjList[src];
     }
     else{
-        cprintf("we have been here1\n");
+        cprintf("we have been here1 by mr %d\n",myproc()->thread_index);
         newNode->vertex = src;
         newNode->next = 0;
         newNode->type = PROCESS;
         if(graph->adjList[dest] == 0){
           cprintf("we have been here2\n");
           graph->adjList[dest] = newNode;
-          diplay_graph(graph);
+          display_graph(graph);
           return 1;
         }
         front_node = graph->adjList[dest];
@@ -123,7 +184,7 @@ int addEdge(Graph* graph, int src, int dest, enum edgetype type) {
     front_node->next = newNode;
     cprintf("step3\n");
     return 1;
-}
+}*/
 
 int removeEdge(Graph* graph, int src, int dest){
     cprintf("removeEdge: thread %d and resource %d\n", src, dest);
@@ -136,11 +197,13 @@ int removeEdge(Graph* graph, int src, int dest){
         }else{
           prev_node->next = front_node->next;
         }
+        display_graph(graph);
         return 1;
       } 
       prev_node = front_node;
       front_node = front_node->next;
     }
+    display_graph(graph);
     return 0;
 }
 
@@ -148,7 +211,7 @@ int add_request_edge(Graph* graph, int src, int dest){
     cprintf("add_request_edge: thread %d and resource %d\n", src, dest);
     acquire(&graph->lock);
     addEdge(graph, src, dest, REQUEST);
-    if(isCyclic(graph, src)){
+    if(hasCycle(graph, src)){
         cprintf("Deadlock detected.\n");
         release(&graph->lock);
         return 0;
@@ -167,10 +230,10 @@ int add_assign_edge(Graph* graph, int src, int dest) {
     cprintf("thread %d is trying to assign resource %d named %s\n", src, resource->resourceid, resource->name);
 
     acquire(&resource->lock);
-    if (resource->acquired) {
-        cprintf("Resource already acquired! thread: %d\n",src);
+    while(resource->acquired!=0) {
+        //cprintf("Resource already acquired! thread: %d\n",src);
         release(&resource->lock);
-        return -1;  // Avoid deadlock by exiting early
+        acquire(&resource->lock);
     }
 
     cprintf("thread %d acquired resource %d\n", src, resource->resourceid);
@@ -180,7 +243,7 @@ int add_assign_edge(Graph* graph, int src, int dest) {
     removeEdge(graph, src, dest);
     addEdge(graph, src, dest, ASSIGN);
     cprintf("hosein goft\n");
-    if (isCyclic(graph, src)) {
+    if (hasCycle(graph, src)) {
         cprintf("Deadlock detected.\n");
         release(&graph->lock);
         return -1;  // Avoid inconsistent state
