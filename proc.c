@@ -174,19 +174,20 @@ int add_assign_edge(Graph* graph, int src, int dest) {
     }
 
     cprintf("thread %d acquired resource %d\n", src, resource->resourceid);
-    resource->acquired = 1;
+    resource->acquired = src;
 
     acquire(&graph->lock);
     removeEdge(graph, src, dest);
     addEdge(graph, src, dest, ASSIGN);
-
+    cprintf("hosein goft\n");
     if (isCyclic(graph, src)) {
         cprintf("Deadlock detected.\n");
         release(&graph->lock);
         return -1;  // Avoid inconsistent state
     }
-
+    cprintf("baade if\n");
     release(&graph->lock);
+    release(&resource->lock);
     return 0;
 }
 
@@ -203,12 +204,18 @@ int releaseResource(Graph* graph, int src, int dest) {
         return -1;
     }
     resource = resources[dest];
+    acquire(&resource->lock);
+    if(resource->acquired!=src)
+    {
+      release(&resource->lock);
+      return 0;
+    }
 
     acquire(&graph->lock);
     removeEdge(graph, dest, src);
+    resource->acquired = 0;
     release(&graph->lock);
 
-    resource->acquired = 0;
     release(&resource->lock);
 
     return 0;
@@ -902,7 +909,8 @@ int requestresource(int Resource_ID)
     struct proc *curproc = myproc();
     cprintf("thread %d is requeseting %d\n", curproc->thread_index, Resource_ID);
     acquireResource(g, curproc->thread_index, Resource_ID);
-    return -1;
+    cprintf("yoooooo request works\n");
+    return 0;
 }
 int releaseresource(int Resource_ID)
 {

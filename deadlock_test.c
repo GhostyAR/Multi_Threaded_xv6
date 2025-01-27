@@ -5,9 +5,10 @@
 Lock My_Lock;
 
 void function(void* arg1,void* arg2){
-    requestresource(1);
+    REQUEST(1);
+    printf(2,"request done succesfully\n");
     sleep(0.2);
-    releaseresource(1);
+    RELEASE(1);
     int* X=(int*)arg2;
     Lock_Acquire(&My_Lock);
     printf(2,"Thread %d Finished with value =%d\n",(*X),2*(*X)+1);
@@ -25,7 +26,7 @@ int main(int argc, char *argv[])
     for(int i = 0; i < x; i++){
         thread_create(&function, (void *)size, (void *)&list[i]);
     }
-    for(int i=1;i<=3;i++){ 
+    for(int i=1;i<=x;i++){ 
         join(i);
     }
     exit();
